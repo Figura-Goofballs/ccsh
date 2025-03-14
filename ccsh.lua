@@ -70,10 +70,6 @@ local function runCommand()
       end
 
       if internalCommands[arg[0]] then
-         if arg[0] == "exit" then
-            return tonumber(arg[1] or "") or 0
-         end
-
          running = coroutine.create(internalCommands[arg[0]])
 
          coroutine.resume(running, arg)
@@ -202,6 +198,10 @@ while true do
          cols[#cols + 1] = 0
 
          if not escaped then
+            if args[0]:gsub("\x00", "") == "exit" then
+               return tonumber(arg[1] or "") or 0
+            end
+
             runCommand()
          end
       elseif importantKeys.backspace[eventData[1]] then
