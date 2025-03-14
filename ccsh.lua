@@ -8,6 +8,8 @@ local function split(str, on)
     return result
 end
 
+local emptyFunc = function() end
+
 ---@type thread?
 local running
 local vars = vars or {
@@ -50,7 +52,7 @@ term.write(vars.PS1)
 
 local shift, caps, control, escaped
 local args = {[0] = ""}
-local cols = {[0] = 2}
+local cols = {[0] = #vars.PS1}
 
 local function runCommand()
    for _, v in pairs(split(vars.PATH, ":")) do
@@ -74,6 +76,7 @@ local function runCommand()
 
          local env = _G
          env.args = args
+         env.vars = vars
 
          running = coroutine.create(load(file.readAll(), v, "t", env))
 
@@ -102,8 +105,10 @@ local function runCommand()
       term.setTextColor(color)
       args = {[0] = ""}
    end
-   term.write(vars.PS1)
-   cols = {[0] = 2}
+
+   running = coroutine.create(emptyFunc)
+   coroutine.resume(running)
+   cols = {[0] = #vars.PS1}
 end
 
 local function backspace()
@@ -120,8 +125,8 @@ local function backspace()
          x = cols[#cols - 1]
          cols[#cols] = nil
 
-         if cols[0] < 2 then
-            cols[0] = 2
+         if cols[0] < #vars.PS1 then
+            cols[0] = #vars.PS1
          end
       end
    end
@@ -157,7 +162,7 @@ while true do
       _, vars["?"] = coroutine.resume(running)
 
       term.write(vars.PS1)
-      cols = {[0] = 2}
+      cols = {[0] = #vars.PS1}
       running = nil
    end
 
