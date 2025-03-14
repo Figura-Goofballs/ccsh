@@ -8,6 +8,8 @@ local function split(str, on)
     return result
 end
 
+term.setCursorBlink(true)
+
 local emptyFunc = function() end
 
 ---@type thread?
@@ -55,27 +57,34 @@ local args = {[0] = ""}
 local cols = {[0] = #vars.PS1}
 
 local function runCommand()
+   local arg = {}
+
+   for k, v in pairs(args) do
+      arg[k] = v:gsub("\x00", "")
+   end
+
    for _, v in pairs(split(vars.PATH, ":")) do
-      local check = fs.combine(v, args[0])
+      local check = fs.combine(v, arg[0])
       if v:match("^.") == "/" then
          check = "/" .. check
       end
 
-      if internalCommands[args[0]] then
-         if args[0] == "exit" then
-            return tonumber(args[1] or "") or 0
+      if internalCommands[arg[0]] then
+         if arg[0] == "exit" then
+            return tonumber(arg[1] or "") or 0
          end
 
-         running = coroutine.create(internalCommands[args[0]])
+         running = coroutine.create(internalCommands[arg[0]])
 
-         coroutine.resume(running, args)
+         coroutine.resume(running, arg)
 
          args = {[0] = ""}
-      elseif fs.exists(check) and args[0] ~= "" then
+         return
+      elseif fs.exists(check) and arg[0] ~= "" then
          local file = fs.open(check, "r")
 
          local env = _G
-         env.args = args
+         env.args = arg
          env.vars = vars
 
          running = coroutine.create(load(file.readAll(), v, "t", env))
@@ -83,17 +92,19 @@ local function runCommand()
          coroutine.resume(running)
 
          args = {[0] = ""}
-      elseif fs.exists("/" .. fs.combine(shell.dir(), args[0])) and args[0] ~= "" then
-         local file = fs.open(fs.combine(shell.dir(), args[0]), "r")
+         return
+      elseif fs.exists("/" .. fs.combine(shell.dir(), arg[0])) and arg[0] ~= "" then
+         local file = fs.open(fs.combine(shell.dir(), arg[0]), "r")
 
          local env = _G
-         env.args = args
+         env.args = arg
 
          running = coroutine.create(load(file.readAll(), v, "t", env))
 
          coroutine.resume(running)
 
          args = {[0] = ""}
+         return
       end
    end
 
@@ -101,7 +112,7 @@ local function runCommand()
       vars["?"] = 127
       local color = term.getTextColor()
       term.setTextColor(colors.red)
-      print("Command " .. args[0] .. " not found.")
+      print("Command " .. arg[0] .. " not found.")
       term.setTextColor(color)
       args = {[0] = ""}
    end
@@ -122,12 +133,15 @@ local function backspace()
          y = 1
          x = 1
       else
-         x = cols[#cols - 1]
          cols[#cols] = nil
+         x = cols[#cols]
 
          if cols[0] < #vars.PS1 then
             cols[0] = #vars.PS1
          end
+
+         term.setCursorPos(x, y)
+         return
       end
    end
 
@@ -135,20 +149,22 @@ local function backspace()
    term.write(" ")
    term.setCursorPos(x, y)
 
-   if not escaped then
-      if args[#args] == "" then
-         args[#args] = nil
+   if args[#args] == "" then
+      args[#args] = nil
 
-         if not args[0] then
-            term.write(" ")
-            args[0] = ""
-         end
-      else
-         args[#args] = args[#args]:gsub(".$", "")
+      if not args[0] then
+         term.write(" ")
+         args[0] = ""
       end
    else
-      escaped = false
+      args[#args] = args[#args]:gsub(".$", "")
+
+      if args[#args]:match("\x00$") then
+         escaped = true
+      end
    end
+
+   escaped = false
 end
 
 while true do
@@ -201,10 +217,11 @@ while true do
       local char = eventData[1]
       local unescape = true
 
-      if char == "\\" and not escaped and not strictquote then
+      if char == "\\" and not escaped then
          escaped = true
-         unescape = false
          cols[#cols] = cols[#cols] + #char
+
+         args[#args] = args[#args] .. "\x00"
 
          goto write
       elseif char == " " and not escaped then
