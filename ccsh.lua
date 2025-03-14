@@ -102,7 +102,7 @@ local function locateCommand(cmd, env)
 
          return load(file.readAll(), check, nil, env)
       elseif fs.exists(check .. ".lua") and cmd ~= "" then
-         local file = fs.open(check, "r")
+         local file = fs.open(check .. ".lua", "r")
 
          if not file then return "" end
 
