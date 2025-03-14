@@ -135,6 +135,7 @@ local function runCommand()
    local err = type(func) == "string" and func
 
    if not err then
+      term.setCursorBlink(false)
       local success, error = pcall(func, table.unpack(arg))
 
       if not success then
@@ -145,47 +146,11 @@ local function runCommand()
          term.setTextColor(color)
          args = {[0] = ""}
       end
-
-      if internalCommands[arg[0]] then
-         running = coroutine.create(internalCommands[arg[0]])
-
-         coroutine.resume(running, table.unpack(arg))
-
-         args = {[0] = ""}
-         return
-      elseif fs.exists(check) and arg[0] ~= "" then
-         local file = fs.open(check, "r")
-
-         local env = mkEnv()
-         env.arg = arg
-         env.vars = vars
-
-         running = coroutine.create(load(file.readAll(), v, nil, env))
-
-         coroutine.resume(running, table.unpack(arg))
-
-         args = {[0] = ""}
-         return
-      elseif arg[0] ~= "" and fs.exists("/" .. fs.combine(shell.dir(), arg[0])) then
-         local file = fs.open(fs.combine(shell.dir(), arg[0]), "r")
-
-         local env = mkEnv()
-         env.arg = arg
-         env.vars = vars
-
-         running = coroutine.create(load(file.readAll(), v, nil, env))
-
-         coroutine.resume(running, table.unpack(arg))
-
-         args = {[0] = ""}
-         return
-      end
    end
 
-   if args[0] ~= "" then
+   if args[0] ~= "" and err then
       vars["?"] = 127
-   else
-      vars["?"] = 1
+
       local color = term.getTextColor()
       term.setTextColor(colors.red)
       print(err)
@@ -202,6 +167,8 @@ local function runCommand()
 
    term.write(vars.PS1)
    cols = {[0] = #vars.PS1}
+
+   term.setCursorBlink(true)
 end
 
 local function backspace()
