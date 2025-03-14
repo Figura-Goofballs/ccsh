@@ -89,7 +89,7 @@ local function runCommand()
 
          args = {[0] = ""}
          return
-      elseif fs.exists("/" .. fs.combine(shell.dir(), arg[0])) and arg[0] ~= "" then
+      elseif arg[0] ~= "" and fs.exists("/" .. fs.combine(shell.dir(), arg[0])) then
          local file = fs.open(fs.combine(shell.dir(), arg[0]), "r")
 
          local env = _G
