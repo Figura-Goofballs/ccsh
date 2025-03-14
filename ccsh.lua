@@ -1,4 +1,4 @@
-local make_package = dofile("/rom/modules/main/cc/require.lua").make
+local make_package = require("mkRequire")
 
 local shell = {}
 
@@ -84,6 +84,42 @@ local shift, caps, control, escaped
 local args = {[0] = ""}
 local cols = {[0] = #vars.PS1}
 
+local function locateCommand(cmd, env)
+   if internalCommands[cmd] then
+      return internalCommands[cmd]
+   end
+
+   for _, v in pairs(split(vars.PATH, ":")) do
+      local check = fs.combine(v, cmd)
+      if v:match("^.") == "/" then
+         check = "/" .. check
+      end
+
+      if fs.exists(check) and cmd ~= "" then
+         local file = fs.open(check, "r")
+
+         if not file then return "" end
+
+         return load(file.readAll(), check, nil, env)
+      elseif fs.exists(check .. ".lua") and cmd ~= "" then
+         local file = fs.open(check, "r")
+
+         if not file then return "" end
+
+         return load(file.readAll(), check .. ".lua", nil, env)
+      elseif fs.exists("/" .. fs.combine(shell.dir(), cmd)) and name ~= "" then
+         local file = fs.open(fs.combine(shell.dir(), cmd), "r")
+
+         if not file then return "" end
+
+         return load(file.readAll(), v, nil, env)
+      end
+   end
+
+   return "Command not found."
+end
+
+local commandError
 local function runCommand()
    local arg = {}
 
@@ -91,10 +127,23 @@ local function runCommand()
       arg[k] = v:gsub("\x00", "")
    end
 
-   for _, v in pairs(split(vars.PATH, ":")) do
-      local check = fs.combine(v, arg[0])
-      if v:match("^.") == "/" then
-         check = "/" .. check
+   local env = mkEnv()
+   env.arg = arg
+   env.vars = vars
+
+   local func = locateCommand(arg[0], env)
+   local err = type(func) == "string" and func
+
+   if not err then
+      local success, error = pcall(func, table.unpack(arg))
+
+      if not success then
+         vars["?"] = 1
+         local color = term.getTextColor()
+         term.setTextColor(colors.red)
+         print(error)
+         term.setTextColor(color)
+         args = {[0] = ""}
       end
 
       if internalCommands[arg[0]] then
@@ -135,15 +184,23 @@ local function runCommand()
 
    if args[0] ~= "" then
       vars["?"] = 127
+   else
+      vars["?"] = 1
       local color = term.getTextColor()
       term.setTextColor(colors.red)
-      print("Command " .. arg[0] .. " not found.")
+      print(err)
       term.setTextColor(color)
       args = {[0] = ""}
    end
 
-   running = coroutine.create(emptyFunc)
-   coroutine.resume(running)
+   args = {[0] = ""}
+   cols = {[0] = #vars.PS1}
+
+   local env = mkEnv()
+   env.arg = arg
+   env.vars = vars
+
+   term.write(vars.PS1)
    cols = {[0] = #vars.PS1}
 end
 
