@@ -1,3 +1,17 @@
+local make_package = dofile("/rom/modules/main/cc/require.lua").make
+
+local shell = {}
+
+local function mkEnv()
+   local env = setmetatable({}, {__index = _G})
+
+   env.shell = shell
+
+   env.require, env.package = make_package(env, shell.dir())
+
+   return env
+end
+
 local function split(str, on)
     on = on or " "
     local result = {}
@@ -15,11 +29,25 @@ local emptyFunc = function() end
 ---@type thread?
 local running
 local vars = vars or {
-   PATH = "/bin:" .. shell.path(),
+   PATH = "/bin:/rom/programs:/rom/programs/fun" ..
+         (multishell and ":/rom/programs/advanced" or "") ..
+         (turtle and ":/rom/programs/turtle" or "") ..
+         (commands and ":/rom/programs/command" or "") ..
+         (http and ":/rom/programs/http" or "") ..
+         (pocket and ":/rom/programs/pocket" or "") ..
+         (rednet and ":/rom/programs/rednet" or ""),
    SHELL = "ccsh",
    TERM = term.isColor() and "ADVANCED" or "NORMAL",
    PS1 = "$ "
 }
+
+local dir = "/"
+function shell.dir()
+   return dir
+end
+function shell.path()
+   return vars.PATH
+end
 
 local importantKeys = {
    shift = {
@@ -43,8 +71,8 @@ local importantKeys = {
 }
 
 local internalCommands = {
-   echo = function(arg)
-      print(table.concat(arg, " "))
+   echo = function(...)
+      print(table.concat({...}, " "))
    end,
    exit = function() end -- Placeholder
 }
@@ -72,32 +100,33 @@ local function runCommand()
       if internalCommands[arg[0]] then
          running = coroutine.create(internalCommands[arg[0]])
 
-         coroutine.resume(running, arg)
+         coroutine.resume(running, table.unpack(arg))
 
          args = {[0] = ""}
          return
       elseif fs.exists(check) and arg[0] ~= "" then
          local file = fs.open(check, "r")
 
-         local env = _G
-         env.args = arg
+         local env = mkEnv()
+         env.arg = arg
          env.vars = vars
 
-         running = coroutine.create(load(file.readAll(), v, "t", env))
+         running = coroutine.create(load(file.readAll(), v, nil, env))
 
-         coroutine.resume(running)
+         coroutine.resume(running, table.unpack(arg))
 
          args = {[0] = ""}
          return
       elseif arg[0] ~= "" and fs.exists("/" .. fs.combine(shell.dir(), arg[0])) then
          local file = fs.open(fs.combine(shell.dir(), arg[0]), "r")
 
-         local env = _G
-         env.args = arg
+         local env = mkEnv()
+         env.arg = arg
+         env.vars = vars
 
-         running = coroutine.create(load(file.readAll(), v, "t", env))
+         running = coroutine.create(load(file.readAll(), v, nil, env))
 
-         coroutine.resume(running)
+         coroutine.resume(running, table.unpack(arg))
 
          args = {[0] = ""}
          return
@@ -171,8 +200,6 @@ while true do
    if running and coroutine.status(running) == "running" and event ~= "terminate" then
       goto continue
    elseif running and coroutine.status(running) == "dead" then
-      _, vars["?"] = coroutine.resume(running)
-
       term.write(vars.PS1)
       cols = {[0] = #vars.PS1}
       running = nil
